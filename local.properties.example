@@ -1,0 +1,4 @@
+# Copy this file to local.properties and fill in your Spotify Developer credentials.
+# Register at https://developer.spotify.com/dashboard
+# Add redirect URI: respot://auth/callback
+SPOTIFY_CLIENT_ID=your_spotify_client_id_here

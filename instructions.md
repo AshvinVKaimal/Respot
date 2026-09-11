@@ -1,8 +1,10 @@
+# Respot
+
 ## Project Overview
 
-**Respot** is a specialized, modern Android audio application engineered to overcome the structural rigidity of server-side album metadata. The music listening app decouples the physical location of audio assets from their conceptual presentation and acts as a **unified local metadata virtualization engine** sitting on top of both the official Spotify Web API (leveraging an authenticated Spotify Premium account) and the Android device's Scoped Storage subsystem. 
+**Respot** is a specialized, modern Android audio application engineered to overcome the structural rigidity of server-side album metadata. The music listening app decouples the physical location of audio assets from their conceptual presentation and acts as a **unified local metadata virtualization engine** sitting on top of both the official Spotify Web API (leveraging an authenticated Spotify Premium account) and the Android device's Scoped Storage subsystem.
 
-Through Respot, users can stream any track from the vast Spotify catalog alongside their own local files (`.mp3`, `.flac`, `.wav`, `.m4a`) within a single, completely editable user interface. Users can inject local files straight into official streaming albums, fully overwrite tracklists, modify metadata fields (such as overriding album title and artwork, track titles, artist names, etc.), and curate hybrid offline/online listening environments. 
+Through Respot, users can stream any track from the vast Spotify catalog alongside their own local files (`.mp3`, `.flac`, `.wav`, `.m4a`) within a single, completely editable user interface. Users can inject local files straight into official streaming albums, fully overwrite tracklists, modify metadata fields (such as overriding album title and artwork, track titles, artist names, etc.), and curate hybrid offline/online listening environments.
 
 The application prioritizes a high-performance, purist audio experience featuring a modular, user-customizable homepage layout and seamless, gapless playback.
 
@@ -61,9 +63,11 @@ v                                                                               
 | - Jetpack Media3 orchestrates gapless buffer   |
 |   preloading on upcoming items.                |
 +------------------------------------------------+
+
 ```
 
 #### Detailed Package Implementation Steps:
+
 1. **Authentication & Token Management:** The user launches the app and triggers the `Spotify-App-Remote` auth flow or standard OAuth2 Web API endpoint via a secure Chrome Custom Tab (`androidx.browser:browser`). Tokens are received via an Intent filter redirect URI, evaluated, and stored securely using `androidx.security:security-crypto`. Concurrently, the user is prompted for physical media access via the Jetpack Compose `RememberLauncherForActivityResult` binding to `ActivityResultContracts.RequestPermission()`.
 2. **Library Synthesis (Scanning & Syncing):** Upon acquisition of `READ_MEDIA_AUDIO` (or `READ_EXTERNAL_STORAGE` on legacy APIs), a background worker subclassed from `androidx.work:work-runtime-ktx` initiates a query across the system `ContentResolver` to index audio metadata (Title, Artist, Duration, Absolute URI). These records are inserted into a Local Tracks schema within a **Room Database** (`androidx.room:room-runtime`). Simultaneously, an asynchronous `Retrofit` service fetches user-saved cloud albums and playlists from the Spotify Web API, staging them within the same schema.
 3. **Virtual Customization (VME Loop):** When a user triggers an edit command on an item via the UI, a Jetpack Compose screen updates state flowing from a `ViewModel`. If a track is replaced by a local file, a junction table in the Room Database registers a mapping pairing the `virtual_album_id` to the local file's `content://` URI, along with any user-overridden strings (e.g., customized track name, customized artwork URI).
@@ -73,23 +77,34 @@ v                                                                               
 
 ### Tech Stack
 
-* **Frontend (UI Layer):** * **Jetpack Compose:** Declarative UI implementation using single-state flows.
-    * **Compose Foundation Layout & Material 3:** Modern, accessible design elements conforming to dynamic styling guidelines.
-    * **Accompanist / Compose Reorderable List:** For drag-and-drop track re-ordering interfaces.
-    * **Coil (Compose Extension):** Asynchronous, hardware-accelerated image loading supporting local paths, content URIs, and network image endpoints.
+* **Frontend (UI Layer):**
+* **Jetpack Compose:** Declarative UI implementation using single-state flows.
+* **Compose Foundation Layout & Material 3:** Modern design elements conforming to dynamic styling guidelines.
+* **Accompanist / Compose Reorderable List:** For drag-and-drop track re-ordering interfaces.
+* **Coil (Compose Extension):** Asynchronous, hardware-accelerated image loading supporting local paths, content URIs, and network endpoints.
+
+
 * **Audio Engine Layer:**
-    * **Jetpack Media3 ExoPlayer:** Complete audio pipeline support, progressive streaming, customizable audio-renderers, audio-focus delegation, and background service mapping.
-    * **Jetpack Media3 Session:** Provides system-wide media controls, lock screen metadata integration, and Android Auto extensibility.
+* **Jetpack Media3 ExoPlayer:** Complete audio pipeline support, progressive streaming, customizable audio-renderers, audio-focus delegation, and background service mapping.
+* **Jetpack Media3 Session:** Provides system-wide media controls, lock screen metadata integration, and Android Auto extensibility.
+
+
 * **Data Persistence Layer (Local DB):**
-    * **Room SQLite Object Mapping Library:** Manages relational entities for Local Tracks, Synced Spotify Mirror Tracks, Virtual Albums, Custom Playlists, and Homepage Module Preferences.
-    * **EncryptedSharedPreferences:** Secures client credentials, access tokens, refresh tokens, and specific cryptographic seeds.
+* **Room SQLite Object Mapping Library:** Manages relational entities for Local Tracks, Synced Spotify Mirror Tracks, Virtual Albums, Custom Playlists, and Homepage Module Preferences.
+* **EncryptedSharedPreferences:** Secures client credentials, access tokens, refresh tokens, and cryptographic seeds.
+
+
 * **Networking & Integration Layer:**
-    * **Retrofit 2 & OkHttp 3:** Network abstraction for Web API calls, featuring token refresh interceptors, rate-limit retry handlers, and disk-caching mechanisms.
-    * **Kotlin Coroutines & Flow:** Reactive, asynchronous stream boundaries across Data, Domain, and UI layers.
+* **Retrofit 2 & OkHttp 3:** Network abstraction for Web API calls, featuring token refresh interceptors, rate-limit retry handlers, and disk-caching mechanisms.
+* **Kotlin Coroutines & Flow:** Reactive, asynchronous stream boundaries across Data, Domain, and UI layers.
+
+
 * **APIs & Services:**
-    * **Spotify Web API:** Metadata lookup, audio feature parsing, cloud playlist replication, and premium authorization flags.
-    * **Spotify App Remote SDK / Web Stream Proxy:** Media playback control hooks for authenticating audio output from Spotify servers into the unified wrapper.
-    * **Android MediaStore System API:** Queries local filesystem audio content securely within the storage scope.
+* **Spotify Web API:** Metadata lookup, audio feature parsing, cloud playlist replication, and premium authorization flags.
+* **Spotify App Remote SDK / Web Stream Proxy:** Media playback control hooks for authenticating audio output from Spotify servers into the unified wrapper.
+* **Android MediaStore System API:** Queries local filesystem audio content securely within the storage scope.
+
+
 
 ---
 
@@ -99,82 +114,549 @@ v                                                                               
 
 * **Purpose:** Securely link the user's Spotify Premium account while establishing safe read access to local audio assets.
 * **Design & Implementation:**
-    * The login sequence triggers an OAuth2 authorization code flow with proof key for code exchange (PKCE). It utilizes specific scopes: `user-library-read`, `user-library-modify`, `playlist-read-private`, `playlist-modify-private`, `playlist-modify-public`, `streaming`.
-    * Upon receiving an auth callback, an `Interceptor` appends the `Authorization: Bearer <token>` header to all outgoing requests. A periodic evaluation checks if tokens are within 5 minutes of expiration; if true, it quietly spins a Coroutine to trigger the `/api/token` refresh endpoint using the refresh token payload stored inside `EncryptedSharedPreferences`.
-    * Simultaneously, the UI displays a clean runtime prompt for media verification. If access is granted, a background sync service queries `MediaStore.Audio.Media.EXTERNAL_CONTENT_URI`.
+* The login sequence triggers an OAuth2 authorization code flow with Proof Key for Code Exchange (PKCE) using scopes: `user-library-read`, `user-library-modify`, `playlist-read-private`, `playlist-modify-private`, `playlist-modify-public`, `streaming`.
+* Token exchange returns access and refresh tokens. An `AuthInterceptor` appends the Bearer token to all outgoing Retrofit calls. A proactive token refresh loop evaluates token lifespan; if within 5 minutes of expiration, it executes a refresh request via `TokenManager`.
+* MediaStore scanning is initiated upon granting `READ_MEDIA_AUDIO` permission. Scanning runs as a background process to avoid blocking the main UI thread.
+
+
 * **Error Handling:**
-    * *Invalid Account Tier Exception:* If the profile object returned by `https://api.spotify.com/v1/me` contains a `product` field equal to `free`, the app terminates the session, invalidates cache tokens, and presents a non-intrusive full-screen warning specifying that a Spotify Premium account is required for third-party streaming integration.
-    * *Storage Access Denied:* If the user rejects the storage permission, all local file functionalities gracefully lock out, showing a placeholder icon on UI blocks that normally display local music, alongside an operational "Grant Permission" button.
+* *Invalid Account Tier Exception:* If the `product` field in the Spotify profile object (`/v1/me`) is not `premium`, the user session is invalidated, and an alert dialog informs the user that Spotify Premium is required for audio streaming.
+* *Storage Access Denied:* If media permissions are denied, local file capabilities are disabled, UI placeholders indicate missing local tracks, and a contextual "Grant Storage Access" action button is displayed.
+
+
 
 ### 2. The Virtual Metadata Engine (VME)
 
 * **Purpose:** Enable modification of fixed cloud album layouts by establishing a locally managed database abstraction layer.
 * **Design & Implementation:**
-    * Define three concrete database schemas: `VirtualAlbumEntity`, `TrackMappingEntity`, and `TrackMetadataOverrideEntity`.
-    * When an official Spotify album is selected for editing, the app creates a `VirtualAlbumEntity` containing a unique uuid while copying the original properties (Default Name, Original Artist, Original Cover URL).
-    * Tracks within this virtual album are mapped via a relational table containing order indices (`sequence_position`). 
-    * To replace a track, the `TrackMappingEntity` swaps its pointer reference from the old `spotify_track_id` to a newly registered local file path `content://media/external/audio/media/...`.
-    * Metadata customization screens execute standard atomic database transactions (`@Transaction` in Room). If a user renames an album or selects a custom local image file for artwork, the path to that image file or text string is saved to the override entity. Coil reads these local string indices before defaulting back to network targets.
+* Implemented using Room with three primary entities: `VirtualAlbumEntity`, `TrackMappingEntity`, and `TrackMetadataOverrideEntity`.
+* When cloning an album, a new `VirtualAlbumEntity` record is created, referencing the target Spotify or local source.
+* `TrackMappingEntity` records maintain the explicit sequence of items using a zero-indexed `sequence_position` field.
+* Overrides (e.g., custom artwork URIs, user-edited titles, artist overrides) are stored in `TrackMetadataOverrideEntity`.
+* Database updates are executed within atomic Room transactions (`@Transaction`).
+
+
 * **Error Handling:**
-    * *Missing Local Source:* If a local audio file is renamed or moved outside the app's scope, the file descriptor will throw a `FileNotFoundException`. The database catches this flag during playback preparation, updates the target track entity state with a broken status flag, grays out the list track visually, and safely skips to the next valid sequence element.
+* *Missing Local Source:* If a local content URI becomes unresolvable (`FileNotFoundException`), the VME updates the track's status flag in the local database to `BROKEN`. The UI displays a disabled state for the track, and playback orchestration skips over broken entries automatically.
+
+
 
 ### 3. High-Fidelity Audio Engine & Gapless Playback Pipeline
 
 * **Purpose:** Provide uniform, continuous background playback transitions across heterogeneous audio components without audible clicks, gaps, or long buffering pauses.
 * **Design & Implementation:**
-    * The core audio service extends `MediaSessionService`, managing a single highly optimized `ExoPlayer` instance configured via an `DefaultLoadControl` that allocates an aggressive buffer size (minimum 30 seconds, maximum 60 seconds).
-    * Gapless functionality is handled by chaining `MediaItem` inputs inside ExoPlayer's internal playlist sequence mechanism. When index `N` is actively playing, ExoPlayer automatically initializes a background network socket connection or content file descriptor channel for index `N+1`.
-    * For streaming resources, the app sets up an `OkHttpDataSource.Factory` which handles chunked stream downloads directly.
+* `RespotPlaybackService` manages an `ExoPlayer` instance initialized with an aggressive `DefaultLoadControl` (30s minimum buffer, 60s maximum buffer).
+* Media sources are mapped to `Media3 MediaItem` objects. Gapless playback is maintained by enqueueing upcoming tracks into ExoPlayer's playlist queue before the active track finishes.
+* Network streaming uses an `OkHttpDataSource.Factory` for streaming audio buffers over persistent HTTP/2 connections.
+
+
 * **Error Handling:**
-    * *Network Timeout/Dropouts:* If the streaming audio buffer starves due to zero network connection, ExoPlayer transitions to `STATE_BUFFERING`. If a timeout condition triggers, the engine catches the `PlaybackException`, records the elapsed timestamp, tests if the upcoming track index `N+1` is an offline local file, and immediately executes a jump skip to keep the music playing.
+* *Network Timeout/Dropouts:* On network dropouts (`STATE_BUFFERING` timeout), `ExoPlayer` captures `PlaybackException`. If the next track in the queue is a cached or local asset, the controller immediately advances playback to the local item.
+
+
 
 ### 4. Offline Sync & Caching Architecture
 
 * **Purpose:** Enable local downloading of streaming assets and reliable storage of tracks for completely disconnected playback.
 * **Design & Implementation:**
-    * Utilizes ExoPlayer's `CacheDataSourceFactory` configured with a dedicated `SimpleCache` instance bound to a localized directory (`context.cacheDir/audio_cache`).
-    * When an offline flag is enabled for an album or playlist, a persistent background download manager implemented via `WorkManager` queues the target streaming tracks. It loops through network assets, downloads them progressively using low-priority bandwidth flags, and writes them to the `SimpleCache` using the track's canonical Spotify ID as the cache key.
-    * When playing a streaming asset, the `CacheDataSource` interceptor evaluates whether the key exists locally. If present, it serves audio packets directly from internal flash memory with absolute zero network utilization.
+* Uses `CacheDataSourceFactory` backed by a `SimpleCache` instance bound to `context.cacheDir/audio_cache` (managed by `CacheManager`).
+* Background pre-fetching is orchestrated by `OfflineSyncWorker` (using `WorkManager`). Downloads process items iteratively, saving stream chunks into `SimpleCache` keyed by Spotify track ID.
+* During playback, `CacheDataSource` resolves requests locally if the track key exists in cache, avoiding unnecessary network traffic.
+
+
 * **Error Handling:**
-    * *Out of Storage Allocation:* If the device storage limit drops below 200MB during download loops, the `WorkManager` intercepts the disk error, halts active download operations, drops remaining items in the queue, and sends a system tray notification stating: "Sync paused due to low storage availability."
+* *Out of Storage Allocation:* If available disk space falls below 200MB, `OfflineSyncWorker` cancels active jobs, clears incomplete download caches, and posts a system notification informing the user of low storage space.
+
+
 
 ### 5. Modular & Personalizable Home Interface
 
 * **Purpose:** Provide an uncluttered, high-speed launch screen completely configurable by the end user.
 * **Design & Implementation:**
-    * The home view uses a collection layout that reads structural configuration matrices out of a lightweight `home_layout_preferences` Room schema.
-    * The layout data model consists of a list of active modules:
-        ```kotlin
-        enum class HomeModuleType { RECENTLY_PLAYED, VIRTUAL_ALBUMS, CUSTOM_PLAYLISTS, LOCAL_TRACKS, LISTENING_STATS }
-        data class HomeModuleConfig(val type: HomeModuleType, val orderIndex: Int, val isVisible: Boolean)
-        ```
-    * A preference panel allows users to toggle visibility flags or drag-and-drop rows to modify `orderIndex`. The main interface queries this dynamic profile, emitting a list of UI composables arranged exactly as the user specified.
-    * "Listening Stats" computes internal telemetry parameters gathered quietly by tracking every successful audio completion record written to a local database ledger.
+* Home screen layout structure is driven by configuration records stored in `HomeLayoutEntity`.
+* Supported module types include `RECENTLY_PLAYED`, `VIRTUAL_ALBUMS`, `CUSTOM_PLAYLISTS`, `LOCAL_TRACKS`, and `LISTENING_STATS`.
+* Users can toggle visibility and reorder modules via drag-and-drop. `HomeScreen` dynamically renders modules based on the sorted configuration.
+
+
 * **Error Handling:**
-    * *Empty State Anomalies:* If a user activates a module (e.g., "Recently Played") but the database contains zero history rows, the composable function catches the empty collection state gracefully, rendering a minimal, clean illustrative frame recommending actions instead of throwing null-pointer redraw exceptions.
+* *Empty State Anomalies:* If a module has no content to display (e.g., `LISTENING_STATS` with zero history), the composable renders a clean, non-intrusive empty state card with an actionable prompt rather than hiding the module entirely or causing UI layout shifts.
+
+
 
 ---
 
 ## Documentation
 
-{to be filled later}
+### 1. Authentication & Spotify Web API Integration
+
+#### PKCE OAuth Authorization Request
+
+* **Endpoint:** `[https://accounts.spotify.com/authorize](https://accounts.spotify.com/authorize)`
+* **HTTP Method:** `GET`
+* **Query Parameters:**
+* `client_id`: Application Client ID string.
+* `response_type`: `code`
+* `redirect_uri`: `respot://auth/callback`
+* `code_challenge_method`: `S256`
+* `code_challenge`: Base64URL-encoded SHA-256 string derived from code verifier.
+* `scope`: `user-library-read user-library-modify playlist-read-private playlist-modify-private playlist-modify-public streaming`
+
+
+
+#### Token Exchange Request
+
+* **Endpoint:** `[https://accounts.spotify.com/api/token](https://accounts.spotify.com/api/token)`
+* **HTTP Method:** `POST`
+* **Headers:** `Content-Type: application/x-www-form-urlencoded`
+* **Payload:**
+```
+grant_type=authorization_code&client_id=<CLIENT_ID>&code=<AUTH_CODE>&redirect_uri=respot%3A%2F%2Fauth%2Fcallback&code_verifier=<CODE_VERIFIER>
+
+```
+
+
+* **Success Response (200 OK):**
+```json
+{
+  "access_token": "BQB7...x9A",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "LMAO...z10",
+  "scope": "user-library-read user-library-modify playlist-read-private playlist-modify-private playlist-modify-public streaming"
+}
+
+```
+
+
+
+#### Fetch Current User Profile
+
+* **Endpoint:** `GET [https://api.spotify.com/v1/me](https://api.spotify.com/v1/me)`
+* **Headers:** `Authorization: Bearer <ACCESS_TOKEN>`
+* **Success Response (200 OK):**
+```json
+{
+  "display_name": "Audio Purist",
+  "id": "user_id_12345",
+  "email": "user@example.com",
+  "product": "premium",
+  "images": [
+    {
+      "url": "https://i.scdn.co/image/ab67706c0000bebb..."
+    }
+  ]
+}
+
+```
+
+
+
+#### Fetch Album Metadata
+
+* **Endpoint:** `GET [https://api.spotify.com/v1/albums/](https://api.spotify.com/v1/albums/){id}`
+* **Headers:** `Authorization: Bearer <ACCESS_TOKEN>`
+* **Success Response (200 OK):**
+```json
+{
+  "id": "4aawyAB9vmqN3uQFRMTOfY",
+  "name": "Random Access Memories",
+  "artists": [
+    { "id": "4tZ1A9Erz2492A1R6iL2m1", "name": "Daft Punk" }
+  ],
+  "images": [
+    { "url": "https://i.scdn.co/image/ab67616d0000b273b33d46dfa2635a64e17d13eb", "height": 640, "width": 640 }
+  ],
+  "tracks": {
+    "items": [
+      {
+        "id": "69L24A22kS4aCqO4f2bL2m",
+        "name": "Give Life Back to Music",
+        "duration_ms": 274826,
+        "track_number": 1,
+        "uri": "spotify:track:69L24A22kS4aCqO4f2bL2m"
+      }
+    ]
+  }
+}
+
+```
+
+
+
+---
+
+### 2. Local MediaStore Query Implementation
+
+The following Kotlin code snippet demonstrates querying Android Scoped Storage via `ContentResolver` to index local `.mp3`, `.flac`, `.wav`, and `.m4a` files into domain objects:
+
+```kotlin
+package com.respot.data
+
+import android.content.ContentUris
+import android.content.Context
+import android.provider.MediaStore
+import com.respot.domain.AudioTrack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+class MediaStoreScanner(private val context: Context) {
+
+    suspend fun scanLocalAudioFiles(): List<AudioTrack.Local> = withContext(Dispatchers.IO) {
+        val audioList = mutableListOf<AudioTrack.Local>()
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.SIZE
+        )
+
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+        val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
+
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            null,
+            sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val title = cursor.getString(titleColumn) ?: "Unknown Track"
+                val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
+                val album = cursor.getString(albumColumn) ?: "Unknown Album"
+                val duration = cursor.getLong(durationColumn)
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
+
+                audioList.add(
+                    AudioTrack.Local(
+                        id = "local_$id",
+                        contentUri = contentUri.toString(),
+                        title = title,
+                        artist = artist,
+                        album = album,
+                        durationMs = duration
+                    )
+                )
+            }
+        }
+        return@withContext audioList
+    }
+}
+
+```
+
+---
+
+### 3. Room Database Schema Definition
+
+Below are the entity definitions and atomic DAO queries required for maintaining virtualized metadata relationships.
+
+```kotlin
+package com.respot.data
+
+import androidx.room.*
+
+@Entity(tableName = "local_tracks")
+data class LocalTrackEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "content_uri") val contentUri: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    @ColumnInfo(name = "duration_ms") val durationMs: Long
+)
+
+@Entity(tableName = "virtual_albums")
+data class VirtualAlbumEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "original_spotify_id") val originalSpotifyId: String?,
+    @ColumnInfo(name = "custom_title") val customTitle: String,
+    @ColumnInfo(name = "custom_artist") val customArtist: String,
+    @ColumnInfo(name = "custom_artwork_uri") val customArtworkUri: String?
+)
+
+@Entity(
+    tableName = "track_mappings",
+    primaryKeys = ["virtual_album_id", "sequence_position"],
+    foreignKeys = [
+        ForeignKey(
+            entity = VirtualAlbumEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["virtual_album_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class TrackMappingEntity(
+    @ColumnInfo(name = "virtual_album_id") val virtualAlbumId: String,
+    @ColumnInfo(name = "sequence_position") val sequencePosition: Int,
+    @ColumnInfo(name = "spotify_track_id") val spotifyTrackId: String?,
+    @ColumnInfo(name = "local_track_uri") val localTrackUri: String?,
+    @ColumnInfo(name = "is_broken") val isBroken: Boolean = false
+)
+
+@Entity(tableName = "metadata_overrides")
+data class TrackMetadataOverrideEntity(
+    @PrimaryKey val trackId: String,
+    @ColumnInfo(name = "override_title") val overrideTitle: String?,
+    @ColumnInfo(name = "override_artist") val overrideArtist: String?,
+    @ColumnInfo(name = "override_artwork_uri") val overrideArtworkUri: String?
+)
+
+@Entity(tableName = "home_layout")
+data class HomeLayoutEntity(
+    @PrimaryKey val moduleType: String,
+    @ColumnInfo(name = "order_index") val orderIndex: Int,
+    @ColumnInfo(name = "is_visible") val isVisible: Boolean
+)
+
+data class FullVirtualAlbumRelation(
+    @Embedded val album: VirtualAlbumEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "virtual_album_id"
+    )
+    val mappings: List<TrackMappingEntity>
+)
+
+@Dao
+interface VirtualAlbumDao {
+    @Transaction
+    @Query("SELECT * FROM virtual_albums WHERE id = :albumId")
+    suspend fun getVirtualAlbumWithTracks(albumId: String): FullVirtualAlbumRelation?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVirtualAlbum(album: VirtualAlbumEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMappings(mappings: List<TrackMappingEntity>)
+
+    @Transaction
+    suspend fun cloneAndModifyAlbum(
+        album: VirtualAlbumEntity,
+        mappings: List<TrackMappingEntity>
+    ) {
+        insertVirtualAlbum(album)
+        insertMappings(mappings)
+    }
+}
+
+```
+
+---
+
+### 4. Jetpack Media3 Playback Service & ExoPlayer Setup
+
+This setup initializes a foreground `MediaSessionService` with pre-buffering support to enable gapless audio transitions.
+
+```kotlin
+package com.respot.playback
+
+import android.os.Bundle
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
+
+class RespotPlaybackService : MediaSessionService() {
+
+    private var mediaSession: MediaSession? = null
+    private lateinit var player: ExoPlayer
+
+    override fun onCreate() {
+        super.onCreate()
+
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                30_000, // Min buffer: 30s
+                60_000, // Max buffer: 60s
+                1_500,  // Playback start buffer: 1.5s
+                3_000   // Rebuffer start buffer: 3.0s
+            )
+            .build()
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .setUsage(C.USAGE_MEDIA)
+            .build()
+
+        player = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Ensure next track is pre-buffered for gapless playback
+                if (player.hasNextMediaItem()) {
+                    player.prepare()
+                }
+            }
+        })
+
+        mediaSession = MediaSession.Builder(this, player).build()
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+        return mediaSession
+    }
+
+    override fun onDestroy() {
+        mediaSession?.run {
+            player.release()
+            release()
+            mediaSession = null
+        }
+        super.onDestroy()
+    }
+}
+
+```
+
+---
+
+### 5. WorkManager Offline Download & Cache Worker
+
+This worker implementation manages progressive stream caching to internal disk storage using ExoPlayer's `SimpleCache`.
+
+```kotlin
+package com.respot.data
+
+import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.datasource.HttpDataSource
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+class OfflineSyncWorker(
+    context: Context,
+    workerParams: WorkerParameters,
+    private val simpleCache: SimpleCache,
+    private val upstreamFactory: HttpDataSource.Factory
+) : CoroutineWorker(context, workerParams) {
+
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val streamUrl = inputData.getString("KEY_STREAM_URL") ?: return@withContext Result.failure()
+        val trackId = inputData.getString("KEY_TRACK_ID") ?: return@withContext Result.failure()
+
+        // Verify device storage threshold (> 200 MB free)
+        val freeBytes = applicationContext.cacheDir.usableSpace
+        if (freeBytes < 200 * 1024 * 1024) {
+            return@withContext Result.failure()
+        }
+
+        try {
+            val cacheDataSource = CacheDataSource(
+                simpleCache,
+                upstreamFactory.createDataSource(),
+                CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
+            )
+
+            val dataSpec = DataSpec.Builder()
+                .setUri(Uri.parse(streamUrl))
+                .setKey(trackId)
+                .setLength(C.LENGTH_UNSET.toLong())
+                .build()
+
+            val buffer = ByteArray(131072) // 128 KB buffer
+            cacheDataSource.open(dataSpec)
+            while (cacheDataSource.read(buffer, 0, buffer.size) != C.RESULT_END_OF_INPUT) {
+                if (isStopped) {
+                    cacheDataSource.close()
+                    return@withContext Result.stopped()
+                }
+            }
+            cacheDataSource.close()
+            Result.success()
+        } catch (e: Exception) {
+            Result.retry()
+        }
+    }
+}
+
+```
 
 ---
 
 ## Current File Structure
 
-{to be filled later}
+To maintain clean architecture boundaries while keeping file count minimal, the project is structured into **11 Kotlin source files** under `com.respot`:
+
+```
+app/src/main/java/com/respot/
+├── RespotApp.kt
+├── MainActivity.kt
+├── data/
+│   ├── AuthAndStorage.kt
+│   ├── SpotifyApi.kt
+│   ├── RespotDatabase.kt
+│   └── SyncAndCache.kt
+├── domain/
+│   ├── Models.kt
+│   └── Repositories.kt
+├── playback/
+│   ├── RespotPlaybackService.kt
+│   └── PlaybackController.kt
+└── ui/
+    ├── ThemeAndComponents.kt
+    ├── HomeScreen.kt
+    ├── VmeScreen.kt
+    └── PlayerScreen.kt
+
+```
+
+### File Map & Responsibilities
+
+1. **`RespotApp.kt`**: Subclasses `Application`. Handles Hilt/DI initialization, creates notification channels for background audio playback, and instantiates global singletons (`SimpleCache`).
+2. **`MainActivity.kt`**: Single Activity layout setup. Handles edge-to-edge UI configuration, runtime permissions (`READ_MEDIA_AUDIO`), Spotify OAuth authorization redirect callbacks, and the top-level Jetpack Compose `NavHost`.
+3. **`data/AuthAndStorage.kt`**: Encapsulates `TokenManager` (`EncryptedSharedPreferences`), OkHttp `AuthInterceptor` for automatic Bearer token injection and refresh token rotation, and `MediaStoreScanner` for local audio indexing.
+4. **`data/SpotifyApi.kt`**: Contains the `Retrofit` interface definition, OkHttp client setup, and inline API response Data Transfer Objects (DTOs) for Spotify endpoints (`/v1/me`, `/v1/albums`, `/v1/playlists`, `/v1/tracks`).
+5. **`data/RespotDatabase.kt`**: Co-locates the Room database definition (`RespotDatabase`), all schema entities (`LocalTrackEntity`, `VirtualAlbumEntity`, `TrackMappingEntity`, `TrackMetadataOverrideEntity`, `HomeLayoutEntity`), and corresponding DAOs (`VirtualAlbumDao`, `TrackDao`, `HomeLayoutDao`).
+6. **`data/SyncAndCache.kt`**: Implements `OfflineSyncWorker` (`CoroutineWorker`) for background stream downloading and `CacheManager` for managing ExoPlayer's disk cache setup.
+7. **`domain/Models.kt`**: Defines clean domain models, sealed classes, and enums, including `AudioTrack` (handling Local, Spotify, and Hybrid tracks), `VirtualAlbum`, `HomeModule`, `PlaybackState`, and `UserTier`.
+8. **`domain/Repositories.kt`**: Repository interfaces and implementations: `LibraryRepository` (merges local media and Spotify cloud libraries) and `VmeRepository` (handles atomic Room transactions for virtual metadata edits).
+9. **`playback/RespotPlaybackService.kt`**: Extends `MediaSessionService`. Instantiates `ExoPlayer`, `DefaultLoadControl` (30s-60s pre-buffer configuration), `MediaSession`, and handles system media controls/lock screen integration.
+10. **`playback/PlaybackController.kt`**: Bridges UI logic with `MediaController`. Converts domain models (`AudioTrack`) into `Media3 MediaItem` objects, exposing playback controls and state `StateFlow`s.
+11. **`ui/ThemeAndComponents.kt`**: Defines Material 3 color schemes, typography, and shared reusable Composables (`AsyncArtworkImage`, `TrackRowItem`, error indicators).
+12. **`ui/HomeScreen.kt`**: Contains `HomeViewModel` and `HomeScreen` composables for rendering and reordering home modules (`RecentlyPlayedModule`, `VirtualAlbumsModule`, `ListeningStatsModule`).
+13. **`ui/VmeScreen.kt`**: Contains `VmeViewModel` and `VmeScreen` composables for metadata editing, artwork file picking, and drag-and-drop track reordering.
+14. **`ui/PlayerScreen.kt`**: Contains `PlayerViewModel` and `PlayerScreen` composables for the expanded player interface, playback timeline slider, dynamic background styling, and mini-player UI.
 
 ---
 
 ## Non-Functional & Performance Benchmarks
 
 ### 1. Latency & Playback Performance
-* **Gapless Transition Overhead:** When shifting between a streaming network asset and a local file descriptor source, the continuous audio transition gap must not exceed **40 milliseconds**. Pre-buffering thresholds must load at least 5 seconds of downstream data into memory loops before current track completion.
-* **Database Transaction Snappiness:** Any local state modification or metadata overwrite executed via the Virtual Metadata Engine must resolve inside Room within **15 milliseconds** on a standard thread pool to prevent rendering glitches on Jetpack Compose screens.
+
+* **Gapless Transition Overhead:** Continuous audio transitions when shifting between network streams and local content URIs must complete within **40 milliseconds**, avoiding audible clicks or delays. Pre-buffering thresholds must load at least 5 seconds of downstream data before track transition.
+* **Database Transaction Snappiness:** Room database reads, writes, and metadata overrides executed via the Virtual Metadata Engine must resolve within **15 milliseconds** on background thread pools to ensure fluid UI performance in Jetpack Compose views.
 
 ### 2. Security Parameters
-* **Cryptographic Safety:** All OAuth tokens, client secrets, and identifying account payloads must remain completely isolated within internal hardware-backed storage sandboxes provided by `EncryptedSharedPreferences`. Plaintext token strings must never be printed to application logging loops.
+
+* **Cryptographic Safety:** All OAuth tokens, client secrets, and authentication payloads must be stored in hardware-backed secure storage (`EncryptedSharedPreferences`). Token credentials must never be written to plaintext log outputs.
 
 ### 3. Resource Conservation
-* **Power Optimization:** While streaming in the background with the display module inactive, the `RespotPlaybackService` must effectively pool CPU awake states, maintaining an operational target footprint below **6% total battery drain per hour** on a standard 4000mAh mobile device battery.
+
+* **Power Optimization:** During background audio streaming with the display off, `RespotPlaybackService` must optimize CPU wake locks, targeting less than **6% battery consumption per hour** on a standard 4000mAh battery.
