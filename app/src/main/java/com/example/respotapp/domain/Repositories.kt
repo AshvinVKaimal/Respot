@@ -180,12 +180,13 @@ class LibraryRepository(
             var fetchOrder = 0L
             while (hasMore) {
                 val response = spotifyApi.getSavedAlbums(limit = 50, offset = offset)
-                allAlbums.addAll(response.items.map { saved ->
-                    val existing = existingAlbums[saved.album.id]
+                allAlbums.addAll(response.items.mapNotNull { saved ->
+                    val albumId = saved.album.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val existing = existingAlbums[albumId]
                     SpotifyAlbumEntity(
-                        id = saved.album.id,
-                        name = saved.album.name,
-                        artist = saved.album.artists.firstOrNull()?.name ?: "Unknown Artist",
+                        id = albumId,
+                        name = saved.album.name ?: "Album",
+                        artist = saved.album.artists?.firstOrNull()?.name ?: "Unknown Artist",
                         artworkUrl = saved.album.images?.firstOrNull()?.url,
                         trackCount = saved.album.tracks?.total ?: 0,
                         addedAt = saved.addedAt,
@@ -217,13 +218,14 @@ class LibraryRepository(
             var fetchOrder = 0L
             while (hasMore) {
                 val response = spotifyApi.getUserPlaylists(limit = 50, offset = offset)
-                allPlaylists.addAll(response.items.map { playlist ->
-                    val existing = existingPlaylists[playlist.id]
+                allPlaylists.addAll(response.items.mapNotNull { playlist ->
+                    val playlistId = playlist.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    val existing = existingPlaylists[playlistId]
                     val order = existing?.libraryOrder ?: (nextLibraryOrder - fetchOrder++)
                     val trackCount = resolvePlaylistTrackCount(playlist)
                     SpotifyPlaylistEntity(
-                        id = playlist.id,
-                        name = playlist.name,
+                        id = playlistId,
+                        name = playlist.name ?: "Playlist",
                         owner = playlist.owner?.displayName ?: "Spotify",
                         artworkUrl = playlist.images?.firstOrNull()?.url,
                         trackCount = trackCount,
@@ -271,11 +273,12 @@ class LibraryRepository(
     private suspend fun resolvePlaylistTrackCount(playlist: com.example.respotapp.data.SpotifyPlaylist): Int {
         val fromMeta = playlist.tracks?.total ?: 0
         if (fromMeta > 0) return fromMeta
+        val playlistId = playlist.id ?: return 0
         return try {
-            spotifyApi.getPlaylistItems(playlist.id, limit = 1, offset = 0).total
+            spotifyApi.getPlaylistItems(playlistId, limit = 1, offset = 0).total
         } catch (_: Exception) {
             try {
-                spotifyApi.getPlaylist(playlist.id).tracks?.total ?: 0
+                spotifyApi.getPlaylist(playlistId).tracks?.total ?: 0
             } catch (_: Exception) {
                 0
             }
@@ -471,11 +474,12 @@ class LibraryRepository(
         val results = mutableListOf<SearchResultItem>()
 
         response.tracks?.items?.forEach { track ->
+            val trackId = track.id?.takeIf { it.isNotBlank() } ?: return@forEach
             results.add(
                 SearchResultItem(
-                    id = track.id,
-                    title = track.name,
-                    subtitle = track.artists.firstOrNull()?.name ?: "Track",
+                    id = trackId,
+                    title = track.name ?: "Unknown Track",
+                    subtitle = track.artists?.firstOrNull()?.name ?: "Track",
                     artworkUrl = track.album?.images?.firstOrNull()?.url,
                     type = SearchResultType.TRACK,
                     uri = track.uri,
@@ -484,26 +488,28 @@ class LibraryRepository(
             )
         }
         response.albums?.items?.forEach { album ->
+            val albumId = album.id?.takeIf { it.isNotBlank() } ?: return@forEach
             results.add(
                 SearchResultItem(
-                    id = album.id,
-                    title = album.name,
-                    subtitle = album.artists.firstOrNull()?.name ?: "Album",
+                    id = albumId,
+                    title = album.name ?: "Album",
+                    subtitle = album.artists?.firstOrNull()?.name ?: "Album",
                     artworkUrl = album.images?.firstOrNull()?.url,
                     type = SearchResultType.ALBUM,
-                    uri = "spotify:album:${album.id}"
+                    uri = "spotify:album:$albumId"
                 )
             )
         }
         response.artists?.items?.forEach { artist ->
+            val artistId = artist.id?.takeIf { it.isNotBlank() } ?: return@forEach
             results.add(
                 SearchResultItem(
-                    id = artist.id,
-                    title = artist.name,
+                    id = artistId,
+                    title = artist.name ?: "Unknown Artist",
                     subtitle = "Artist",
                     artworkUrl = artist.images?.firstOrNull()?.url,
                     type = SearchResultType.ARTIST,
-                    uri = "spotify:artist:${artist.id}"
+                    uri = "spotify:artist:$artistId"
                 )
             )
         }
@@ -514,16 +520,17 @@ class LibraryRepository(
         val artist = spotifyApi.getArtist(artistId)
         val albumsResponse = spotifyApi.getArtistAlbums(artistId)
         ArtistDetail(
-            id = artist.id,
-            name = artist.name,
+            id = artist.id ?: artistId,
+            name = artist.name ?: "Unknown Artist",
             artworkUrl = artist.images?.firstOrNull()?.url,
             genres = artist.genres.orEmpty(),
             followerCount = artist.followers?.total ?: 0,
-            albums = albumsResponse.items.map { album ->
+            albums = albumsResponse.items.mapNotNull { album ->
+                val albumId = album.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 LibraryAlbum(
-                    id = album.id,
-                    title = album.name,
-                    artist = album.artists.firstOrNull()?.name ?: artist.name,
+                    id = albumId,
+                    title = album.name ?: "Album",
+                    artist = album.artists?.firstOrNull()?.name ?: artist.name ?: "Unknown Artist",
                     artworkUrl = album.images?.firstOrNull()?.url,
                     source = AlbumSource.SPOTIFY,
                     trackCount = album.totalTracks ?: album.tracks?.total ?: 0
@@ -534,22 +541,23 @@ class LibraryRepository(
 
     suspend fun getAlbumDetail(albumId: String): AlbumDetail = withContext(Dispatchers.IO) {
         val album = spotifyApi.getAlbum(albumId)
-        val artist = album.artists.firstOrNull()
+        val artist = album.artists?.firstOrNull()
         AlbumDetail(
-            id = album.id,
-            title = album.name,
+            id = album.id ?: albumId,
+            title = album.name ?: "Album",
             artist = artist?.name ?: "Unknown Artist",
             artistId = artist?.id,
             artworkUrl = album.images?.firstOrNull()?.url,
             releaseDate = album.releaseDate,
-            tracks = album.tracks?.items.orEmpty().map { track ->
+            tracks = album.tracks?.items.orEmpty().mapIndexedNotNull { index, track ->
+                val trackId = track.id?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
                 AlbumTrackItem(
-                    id = track.id,
-                    title = track.name,
-                    artist = track.artists.firstOrNull()?.name ?: artist?.name ?: "Unknown",
-                    albumName = album.name,
+                    id = trackId,
+                    title = track.name ?: "Unknown Track",
+                    artist = track.artists?.firstOrNull()?.name ?: artist?.name ?: "Unknown",
+                    albumName = album.name ?: "",
                     durationMs = track.durationMs,
-                    trackNumber = track.trackNumber ?: 0
+                    trackNumber = track.trackNumber ?: (index + 1)
                 )
             }
         )

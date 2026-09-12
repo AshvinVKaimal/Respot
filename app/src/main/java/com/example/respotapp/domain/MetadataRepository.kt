@@ -45,7 +45,7 @@ class MetadataRepository(
         }
 
         val playlistEntity = database.spotifyPlaylistDao().getAll().find { it.id == playlistId }
-        val override = database.itemMetadataOverrideDao().getOverride(playlistId, "PLAYLIST")
+        val override = database.itemMetadataOverrideDao().getOverrideOrNull(playlistId, "PLAYLIST")
 
         val playlistMeta = try {
             spotifyApi.getPlaylist(playlistId)
@@ -53,23 +53,33 @@ class MetadataRepository(
             null
         }
 
-        val allItems = fetchAllPlaylistTrackItems(playlistId)
-        val trackIds = allItems.mapNotNull { it.track?.id }
+        val allItems = try {
+            fetchAllPlaylistTrackItems(playlistId)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val trackIds = allItems.mapNotNull { it.track?.id?.takeIf { id -> id.isNotBlank() } }
         val likedMap = fetchLikedMap(trackIds)
         val overrideDao = database.metadataOverrideDao()
 
         val tracks = allItems.mapIndexedNotNull { index, item ->
             val track = item.track ?: return@mapIndexedNotNull null
-            val trackOverride = overrideDao.getOverride(track.id)
+            val trackId = track.id?.takeIf { it.isNotBlank() }
+                ?: track.uri?.takeIf { it.isNotBlank() }
+                ?: return@mapIndexedNotNull null
+            val trackOverride = overrideDao.getOverrideOrNull(trackId)
             AlbumTrackItem(
-                id = track.id,
-                title = trackOverride?.overrideTitle ?: track.name,
-                artist = trackOverride?.overrideArtist ?: track.artists.firstOrNull()?.name ?: "Unknown",
+                id = trackId,
+                title = trackOverride?.overrideTitle ?: track.name ?: "Unknown Track",
+                artist = trackOverride?.overrideArtist
+                    ?: track.artists?.firstOrNull()?.name
+                    ?: "Unknown",
                 albumName = trackOverride?.overrideAlbum ?: track.album?.name ?: "",
                 durationMs = track.durationMs,
                 trackNumber = trackOverride?.overrideTrackNumber ?: track.trackNumber ?: (index + 1),
                 discNumber = trackOverride?.overrideDiscNumber ?: track.discNumber ?: 1,
-                isLiked = likedMap[track.id] == true,
+                isLiked = likedMap[trackId] == true,
+                isLocal = track.isLocal || track.id.isNullOrBlank(),
                 artworkUrl = trackOverride?.overrideArtworkUri ?: track.album?.images?.firstOrNull()?.url
             )
         }
@@ -212,7 +222,7 @@ class MetadataRepository(
         database.spotifyPlaylistDao().getAll()
             .filter { it.id != SpotifyLibraryIds.LIKED_SONGS_PLAYLIST_ID }
             .map { playlist ->
-            val override = database.itemMetadataOverrideDao().getOverride(playlist.id, "PLAYLIST")
+            val override = database.itemMetadataOverrideDao().getOverrideOrNull(playlist.id, "PLAYLIST")
             LibraryPlaylist(
                 id = playlist.id,
                 title = override?.overrideTitle ?: playlist.name,
@@ -226,30 +236,34 @@ class MetadataRepository(
 
     private suspend fun buildSpotifyAlbumDetail(albumId: String): AlbumDetail {
         val album = spotifyApi.getAlbum(albumId)
-        val artist = album.artists.firstOrNull()
-        val albumOverride = database.itemMetadataOverrideDao().getOverride(albumId, "ALBUM")
+        val artist = album.artists?.firstOrNull()
+        val albumOverride = database.itemMetadataOverrideDao().getOverrideOrNull(albumId, "ALBUM")
         val overrideDao = database.metadataOverrideDao()
-        val trackIds = album.tracks?.items.orEmpty().map { it.id }
+        val trackIds = album.tracks?.items.orEmpty().mapNotNull { it.id }
         val likedMap = fetchLikedMap(trackIds)
 
-        val tracks = album.tracks?.items.orEmpty().map { track ->
-            val override = overrideDao.getOverride(track.id)
+        val tracks = album.tracks?.items.orEmpty().mapIndexedNotNull { index, track ->
+            val trackId = track.id?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
+            val override = overrideDao.getOverrideOrNull(trackId)
             AlbumTrackItem(
-                id = track.id,
-                title = override?.overrideTitle ?: track.name,
-                artist = override?.overrideArtist ?: track.artists.firstOrNull()?.name ?: artist?.name ?: "Unknown",
-                albumName = override?.overrideAlbum ?: album.name,
+                id = trackId,
+                title = override?.overrideTitle ?: track.name ?: "Unknown Track",
+                artist = override?.overrideArtist
+                    ?: track.artists?.firstOrNull()?.name
+                    ?: artist?.name
+                    ?: "Unknown",
+                albumName = override?.overrideAlbum ?: album.name ?: "",
                 durationMs = track.durationMs,
-                trackNumber = override?.overrideTrackNumber ?: track.trackNumber ?: 0,
+                trackNumber = override?.overrideTrackNumber ?: track.trackNumber ?: (index + 1),
                 discNumber = override?.overrideDiscNumber ?: track.discNumber ?: 1,
-                isLiked = likedMap[track.id] == true,
+                isLiked = likedMap[trackId] == true,
                 artworkUrl = override?.overrideArtworkUri ?: album.images?.firstOrNull()?.url
             )
         }
 
         return AlbumDetail(
             id = albumId,
-            title = albumOverride?.overrideTitle ?: album.name,
+            title = albumOverride?.overrideTitle ?: album.name ?: "Album",
             artist = albumOverride?.overrideArtist ?: artist?.name ?: "Unknown Artist",
             artistId = artist?.id,
             artworkUrl = albumOverride?.overrideArtworkUri ?: album.images?.firstOrNull()?.url,
@@ -265,7 +279,7 @@ class MetadataRepository(
         navigationAlbumId: String
     ): AlbumDetail {
         val virtual = relation.album
-        val albumOverride = database.itemMetadataOverrideDao().getOverride(navigationAlbumId, "ALBUM")
+        val albumOverride = database.itemMetadataOverrideDao().getOverrideOrNull(navigationAlbumId, "ALBUM")
         val overrideDao = database.metadataOverrideDao()
         val spotifyTrackIds = relation.mappings.mapNotNull { it.spotifyTrackId }
         val likedMap = fetchLikedMap(spotifyTrackIds)
@@ -306,12 +320,12 @@ class MetadataRepository(
             ?: throw IllegalStateException("Local album not found")
         val albumName = match.album
         val artistName = match.artist
-        val override = database.itemMetadataOverrideDao().getOverride(albumId, "ALBUM")
+        val override = database.itemMetadataOverrideDao().getOverrideOrNull(albumId, "ALBUM")
         val localTracks = database.localTrackDao().getTracksInAlbum(albumName, artistName)
         val overrideDao = database.metadataOverrideDao()
 
         val tracks = localTracks.mapIndexed { index, entity ->
-            val trackOverride = overrideDao.getOverride(entity.id)
+            val trackOverride = overrideDao.getOverrideOrNull(entity.id)
             AlbumTrackItem(
                 id = entity.id,
                 title = trackOverride?.overrideTitle ?: entity.title,
@@ -353,7 +367,7 @@ class MetadataRepository(
             val entity = database.localTrackDao().getAll().find {
                 it.contentUri == localId || it.id == localId
             }
-            val override = overrideDao.getOverride(entity?.id ?: localId)
+            val override = overrideDao.getOverrideOrNull(entity?.id ?: localId)
             return AlbumTrackItem(
                 id = entity?.id ?: localId,
                 title = override?.overrideTitle ?: entity?.title ?: "Local Track",
@@ -368,7 +382,7 @@ class MetadataRepository(
         }
 
         val spotifyTrackId = mapping.spotifyTrackId ?: "${mapping.virtualAlbumId}_$index"
-        val override = overrideDao.getOverride(spotifyTrackId)
+        val override = overrideDao.getOverrideOrNull(spotifyTrackId)
         val spotifyTrack = spotifyAlbum?.tracks?.items?.find { it.id == spotifyTrackId }
             ?: try { spotifyApi.getTrack(spotifyTrackId) } catch (_: Exception) { null }
 
@@ -410,7 +424,7 @@ class MetadataRepository(
     }
 
     private suspend fun buildLikedSongsPlaylistDetail(): PlaylistDetail {
-        val override = database.itemMetadataOverrideDao().getOverride(
+        val override = database.itemMetadataOverrideDao().getOverrideOrNull(
             SpotifyLibraryIds.LIKED_SONGS_PLAYLIST_ID,
             "PLAYLIST"
         )
@@ -433,16 +447,17 @@ class MetadataRepository(
 
         val tracks = allSaved.mapIndexedNotNull { index, saved ->
             val track = saved.track ?: return@mapIndexedNotNull null
-            val override = overrideDao.getOverride(track.id)
+            val trackId = track.id?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
+            val override = overrideDao.getOverrideOrNull(trackId)
             AlbumTrackItem(
-                id = track.id,
-                title = override?.overrideTitle ?: track.name,
-                artist = override?.overrideArtist ?: track.artists.firstOrNull()?.name ?: "Unknown",
+                id = trackId,
+                title = override?.overrideTitle ?: track.name ?: "Unknown Track",
+                artist = override?.overrideArtist ?: track.artists?.firstOrNull()?.name ?: "Unknown",
                 albumName = override?.overrideAlbum ?: track.album?.name ?: "",
                 durationMs = track.durationMs,
                 trackNumber = override?.overrideTrackNumber ?: track.trackNumber ?: (index + 1),
                 discNumber = override?.overrideDiscNumber ?: track.discNumber ?: 1,
-                isLiked = likedMap[track.id] == true,
+                isLiked = likedMap[trackId] == true,
                 artworkUrl = override?.overrideArtworkUri ?: track.album?.images?.firstOrNull()?.url
             )
         }
@@ -465,15 +480,16 @@ class MetadataRepository(
         val entity = VirtualAlbumEntity(
             id = virtualId,
             originalSpotifyId = spotifyAlbumId,
-            customTitle = album.name,
-            customArtist = album.artists.firstOrNull()?.name ?: "Unknown Artist",
+            customTitle = album.name ?: "Album",
+            customArtist = album.artists?.firstOrNull()?.name ?: "Unknown Artist",
             customArtworkUri = album.images?.firstOrNull()?.url
         )
-        val mappings = album.tracks?.items.orEmpty().mapIndexed { index, track ->
+        val mappings = album.tracks?.items.orEmpty().mapIndexedNotNull { index, track ->
+            val trackId = track.id?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
             TrackMappingEntity(
                 virtualAlbumId = virtualId,
                 sequencePosition = index,
-                spotifyTrackId = track.id,
+                spotifyTrackId = trackId,
                 localTrackUri = null
             )
         }

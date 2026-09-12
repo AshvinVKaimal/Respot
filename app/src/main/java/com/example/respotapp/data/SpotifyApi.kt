@@ -41,11 +41,11 @@ data class SpotifyImage(
 )
 
 data class SpotifyPagedResponse<T>(
-    val items: List<T>,
-    val total: Int,
-    val limit: Int,
-    val offset: Int,
-    val next: String?
+    val items: List<T> = emptyList(),
+    val total: Int = 0,
+    val limit: Int = 0,
+    val offset: Int = 0,
+    val next: String? = null
 )
 
 data class SpotifySavedAlbum(
@@ -59,9 +59,9 @@ data class SpotifySavedTrack(
 )
 
 data class SpotifyAlbum(
-    val id: String,
-    val name: String,
-    val artists: List<SpotifyArtist>,
+    val id: String? = null,
+    val name: String? = null,
+    val artists: List<SpotifyArtist>? = null,
     val images: List<SpotifyImage>?,
     val tracks: SpotifyAlbumTracks?,
     @SerializedName("release_date") val releaseDate: String? = null,
@@ -69,13 +69,13 @@ data class SpotifyAlbum(
 )
 
 data class SpotifyAlbumTracks(
-    val items: List<SpotifyTrack>,
-    val total: Int
+    val items: List<SpotifyTrack> = emptyList(),
+    val total: Int = 0
 )
 
 data class SpotifyArtist(
-    val id: String,
-    val name: String,
+    val id: String? = null,
+    val name: String? = null,
     val images: List<SpotifyImage>? = null,
     val genres: List<String>? = null,
     val followers: SpotifyFollowers? = null
@@ -84,20 +84,21 @@ data class SpotifyArtist(
 data class SpotifyFollowers(val total: Int)
 
 data class SpotifyTrack(
-    val id: String,
-    val name: String,
-    val artists: List<SpotifyArtist>,
+    val id: String? = null,
+    val name: String? = null,
+    val artists: List<SpotifyArtist>? = null,
     val album: SpotifyAlbum?,
     @SerializedName("duration_ms") val durationMs: Long = 0,
-    val uri: String?,
+    val uri: String? = null,
     @SerializedName("track_number") val trackNumber: Int? = null,
     @SerializedName("disc_number") val discNumber: Int? = null,
-    @SerializedName("preview_url") val previewUrl: String? = null
+    @SerializedName("preview_url") val previewUrl: String? = null,
+    @SerializedName("is_local") val isLocal: Boolean = false
 )
 
 data class SpotifyPlaylist(
-    val id: String,
-    val name: String,
+    val id: String? = null,
+    val name: String? = null,
     val images: List<SpotifyImage>?,
     @SerializedName("items", alternate = ["tracks"]) val tracks: SpotifyPlaylistTracks?,
     val owner: SpotifyPlaylistOwner?

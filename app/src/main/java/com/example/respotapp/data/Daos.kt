@@ -112,6 +112,11 @@ interface MetadataOverrideDao {
 
     @Query("DELETE FROM metadata_overrides WHERE trackId = :trackId")
     suspend fun deleteOverride(trackId: String)
+
+    suspend fun getOverrideOrNull(trackId: String?): TrackMetadataOverrideEntity? {
+        if (trackId.isNullOrBlank()) return null
+        return getOverride(trackId)
+    }
 }
 
 @Dao
@@ -127,6 +132,11 @@ interface ItemMetadataOverrideDao {
 
     @Query("DELETE FROM item_metadata_overrides WHERE itemId = :itemId AND item_type = :itemType")
     suspend fun deleteOverride(itemId: String, itemType: String)
+
+    suspend fun getOverrideOrNull(itemId: String?, itemType: String): ItemMetadataOverrideEntity? {
+        if (itemId.isNullOrBlank()) return null
+        return getOverride(itemId, itemType)
+    }
 }
 
 @Dao
